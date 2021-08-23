@@ -1,0 +1,200 @@
+typedef unsigned char INT8;
+typedef unsigned int INT16;
+#define F_CPU 8000000UL
+
+#include <avr/io.h>
+#include <stdio.h>
+#include <util/delay.h>
+
+#define Trigger_1 PORTA |= 1 //0번핀 초음파 트리거
+#define Trigger_0 PORTA &= ~1 //초음파 트리거
+#define Trigger_3 PORTA |= 4 //2번핀초음파 트리거
+#define Trigger_2 PORTA &= ~4 //초음파 트리거
+#define Trigger_5 PORTA |= 16 //4번핀초음파 트리거
+#define Trigger_4 PORTA &= ~16 //초음파 트리거
+#define Echo1 (PINA&2) //초음파 에코
+#define Echo2 (PINA&8)
+#define Echo3 (PINA&32) //초음파 에코
+
+
+
+#define speed_set 255
+
+void Go_Straight(INT8 speed);
+void Stop(INT8 speed);
+void Turn_Left(INT8 speed);
+void Turn_Right(INT8 speed);
+void Turn_VLeft(INT8 speed);
+void Turn_VRight(INT8 speed);
+void Back(INT8 speed);
+
+void TC_init(void);
+void port_init(void);
+
+unsigned int  range1,range2,range3;
+
+
+void getEcho1(void)
+{
+   while(!Echo1);
+   TCNT3=0; //카운터 시작
+   TCCR3B=0x02; // 0b00000010 8분주비
+
+   while(Echo1);
+   TCCR3B=0;
+   range1 = TCNT3/116;
+   
+}
+
+void getEcho2(void)
+{
+   while(!Echo2);
+   TCNT3=0; //카운터 시작
+   TCCR3B=0x02; // 0b00000010 8분주비
+   
+   while(Echo2);
+   TCCR3B=0;
+   range2=TCNT3/116;
+   
+}
+void getEcho3(void)
+{
+   while(!Echo3);
+   TCNT3=0; //카운터 시작
+   TCCR3B=0x02; // 0b00000010 8분주비
+   
+   while(Echo3);
+   TCCR3B=0;
+   range3=TCNT3/116;
+   
+}
+
+int main(void)
+{
+   volatile INT8 IR;
+   
+   
+   // WGM12 bit를 1로 바꿈 -> 0b00001000 -> CTC mode
+
+   port_init();
+   TC_init();
+   _delay_ms(2000);
+
+   
+   while(1)
+   {
+      Trigger_1 ;
+      _delay_us(10); //0번핀 트리거펄스발생 최소 대기시간
+      Trigger_0 ;
+      getEcho1();
+      
+      Trigger_3 ;
+      _delay_us(10); //2번핀 트리거펄스발생 최소 대기시간
+      Trigger_2 ;
+      getEcho2();
+      
+      Trigger_5 ;
+      _delay_us(10); //4번핀 트리거펄스발생 최소 대기시간
+      Trigger_4 ;
+      getEcho3();
+      
+      IR=PIND & 0x07;
+      
+      
+      
+      
+         switch (IR)
+         {
+            case 1: PORTG = 0b11111001; // XXO
+            if(range1<8 || range2<8 || range3<8)
+            Stop(speed_set);
+            else
+            Turn_Left(speed_set);
+            break;
+            case 3: PORTG = 0b11111011; // XOO
+            if(range1<8 || range2<8 || range3<8)
+            Stop(speed_set);
+            else
+            Turn_VLeft(speed_set);
+            break;
+            case 6: PORTG = 0b11111110; // OOX
+            if(range1<8 || range2<8 || range3<8)
+            Stop(speed_set);
+            else
+            Turn_VRight(speed_set);
+            break;
+            case 4: PORTG = 0b11111100; // OXX
+            if(range1<8 || range2<8 || range3<8)
+            Stop(speed_set);
+            else
+            Turn_Right(speed_set);
+            break;
+            case 5: PORTG = 0b11111101; // OXO
+            if(range1<8 || range2<8 || range3<8)
+            Stop(speed_set);
+            else
+            Go_Straight(speed_set);
+            case 2: PORTG = 0b11111010; // XOX
+            if(range1<8 || range2<8 || range3<8)
+            Stop(speed_set);
+            else
+            Go_Straight(speed_set);
+            case 7: PORTG = 0b11111111; // OOO
+            if(range1<8 || range2<8 || range3<8)
+            Stop(speed_set);
+            else
+            Go_Straight(speed_set);
+            break;
+            default: PORTG = 0b11111000; // XXX
+            Stop(speed_set);
+         }      
+   }
+   return 0;
+}
+
+   void port_init(void)
+   {
+      DDRD |= 0x00; //초음파
+      DDRB |= 0xf0; //모터 D1 D2
+      DDRA=0x15; //트리거
+      DDRG=0xFF;
+   }
+
+   void TC_init (void)
+   {
+      TCCR0 =  0b01101100;
+      TCCR1A = 0b10101001;
+      TCCR1B = 0b00001011;
+      
+      TCCR3A=0;
+      TCCR3B |= 1<<WGM32;
+      
+      OCR0= 0x00;
+      OCR1AH= 0x00;
+      OCR1AL= 0x00;
+      OCR1BH= 0x00;
+      OCR1BL= 0x00;
+      OCR1CH= 0x00;
+      OCR1CL= 0x00;
+   
+   }
+   void Turn_Right(INT8 speed)
+   {
+      OCR0 = speed;
+      OCR1A = 0;
+      //
+      OCR1C = speed*0.5;
+      OCR1B = 0;
+   }
+
+   void Turn_VRight(INT8 speed)
+   {
+      OCR0 = speed;
+      OCR1A = 0;
+      //
+      OCR1C = 0;
+      OCR1B = 0;
+   }
+
+   void Turn_Left(INT8 speed)
+   {
